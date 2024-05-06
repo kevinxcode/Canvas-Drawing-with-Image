@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canvas Drawing with Image</title>
+<style>
+#canvas_div {
+    text-align: center;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+canvas {
+    border: 2px solid black;
+}
+</style>
+</head>
+<body>
+
+<div id="canvas_div" style="overflow-x: auto;">
+    <input type="file" id="imageInput" accept="image/*" onchange="handleImage(this)">
+    <canvas id="canvas" width="900" height="360"></canvas>
+    <button onclick="convertToBase64()">Convert to Base64</button>
+    <button onclick="javascript:clearArea();return false;">Clear Area</button>
+    Line width : <select id="selWidth">
+        <option value="11">11</option>
+        <option value="13" selected="selected">13</option>
+        <option value="15">15</option>
+    </select>
+    Color : <select id="selColor">
+        <option value="black">black</option>
+        <option value="blue" selected="selected">blue</option>
+        <option value="red">red</option>
+        <option value="green">green</option>
+        <option value="yellow">yellow</option>
+        <option value="gray">gray</option>
+    </select>
+    <textarea id="base64TextArea" rows="10" cols="50"></textarea>
+
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const context = canvas.getContext('2d');
+let isDrawing = false;
+let x = 0;
+let y = 0;
+var offsetX;
+var offsetY;
+
+function startup() {
+  canvas.addEventListener('touchstart', handleStart);
+  canvas.addEventListener('touchend', handleEnd);
+  canvas.addEventListener('touchcancel', handleCancel);
+  canvas.addEventListener('touchmove', handleMove);
+  canvas.addEventListener('mousedown', (e) => {
+    x = e.offsetX;
+    y = e.offsetY;
+    isDrawing = true;
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (isDrawing) {
+      drawLine(context, x, y, e.offsetX, e.offsetY);
+      x = e.offsetX;
+      y = e.offsetY;
+    }
+  });
+
+  canvas.addEventListener('mouseup', (e) => {
+    if (isDrawing) {
+      drawLine(context, x, y, e.offsetX, e.offsetY);
+      x = 0;
+      y = 0;
+      isDrawing = false;
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", startup);
+
+const ongoingTouches = [];
+
+function handleStart(evt) {
+  evt.preventDefault();
+  const touches = evt.changedTouches;
+  offsetX = canvas.getBoundingClientRect().left;
+  offsetY = canvas.getBoundingClientRect().top;
+  for (let i = 0; i < touches.length; i++) {
+    ongoingTouches.push(copyTouch(touches[i]));
+  }
+}
+
+function handleMove(evt) {
+  evt.preventDefault();
+  const touches = evt.changedTouches;
+  for (let i = 0; i < touches.length; i++) {
+    const color = document.getElementById('selColor').value;
+    const idx = ongoingTouchIndexById(touches[i].identifier);
+    if (idx >= 0) {
+      context.beginPath();
+      context.moveTo(ongoingTouches[idx].clientX - offsetX, ongoingTouches[idx].clientY - offsetY);
+      context.lineTo(touches[i].clientX - offsetX, touches[i].clientY - offsetY);
+      context.lineWidth = document.getElementById('selWidth').value;
+      context.strokeStyle = color;
+      context.lineJoin = "round";
+      context.closePath();
+      context.stroke();
+      ongoingTouches.splice(idx, 1, copyTouch(touches[i]));  // swap in the new touch record
+    }
+  }
+}
+
+function handleEnd(evt) {
+  evt.preventDefault();
+  const touches = evt.changedTouches;
+  for (let i = 0; i < touches.length; i++) {
+    const color = document.getElementById('selColor').value;
+    let idx = ongoingTouchIndexById(touches[i].identifier);
+    if (idx >= 0) {
+      context.lineWidth = document.getElementById('selWidth').value;
+      context.fillStyle = color;
+      ongoingTouches.splice(idx, 1);  // remove it; we're done
+    }
+  }
+}
+
+function handleCancel(evt) {
+  evt.preventDefault();
+  const touches = evt.changedTouches;
+  for (let i = 0; i < touches.length; i++) {
+    let idx = ongoingTouchIndexById(touches[i].identifier);
+    ongoingTouches.splice(idx, 1);  // remove it; we're done
+  }
+}
+
+function copyTouch({ identifier, clientX, clientY }) {
+  return { identifier, clientX, clientY };
+}
+
+function ongoingTouchIndexById(idToFind) {
+  for (let i = 0; i < ongoingTouches.length; i++) {
+    const id = ongoingTouches[i].identifier;
+    if (id === idToFind) {
+      return i;
+    }
+  }
+  return -1;    // not found
+}
+
+function drawLine(context, x1, y1, x2, y2) {
+  context.beginPath();
+  context.strokeStyle = document.getElementById('selColor').value;
+  context.lineWidth = document.getElementById('selWidth').value;
+  context.lineJoin = "round";
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
+  context.closePath();
+  context.stroke();
+}
+
+function clearArea() {
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, context.canvas.width, context.canvas.height);
+}
+
+// Function to handle image upload
+function handleImage(input) {
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        canvas.height = img.height; // Adjusting canvas height based on image height
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+
+function convertToBase64() {
+  const dataURL = canvas.toDataURL(); // Get the base64-encoded data url
+  const textarea = document.getElementById('base64TextArea'); // Get the text area element
+  textarea.value = dataURL; // Set the value of the text area to the base64-encoded data
+}
+</script>
+
+</body>
+</html>
